@@ -3,6 +3,8 @@ import std.stdio;
 import std.conv;
 import std.socket;
 
+Socket[socket_t] sockets;
+
 extern (C) void sigintCb (ev_loop_t* loop, ev_signal *w, int revents) {
 	ev_break(loop, EVBREAK_ALL);
 }
@@ -11,7 +13,9 @@ extern (C) void sigintCb (ev_loop_t* loop, ev_signal *w, int revents) {
 extern (C) void socket_watcher_cb(ev_loop_t* loop, ev_io *w, int revents) {
 	writeln("Socket ready");
 
-	auto req = new Socket(cast(socket_t)w.fd, AddressFamily.INET);
+	// grab our socket and then remove it from the array
+	auto req = sockets[cast(socket_t)w.fd];
+	sockets.remove(req.handle);
 
 	char[1024] buf;
 	auto received = req.receive(buf);
@@ -28,10 +32,13 @@ extern (C) void connection_cb(ev_loop_t* loop, ev_io* w, int revents) {
 	auto server = cast(TcpSocket*)(*w).data;
 	auto req = server.accept();
 
-	writeln("Client connected");
-
 	// allocate on the heap; I'll release it later, I swear =D
 	ev_io* watcher = new ev_io;
+
+	// stick out Socket object somewhere where we can get it later
+	// we can't use watcher.data because the GC doesn't check data
+	// allocated by C (unless asked really nicely)
+	sockets[req.handle] = req;
 
 	ev_io_init(watcher, &socket_watcher_cb, req.handle, EV_READ);
 	ev_io_start(loop, watcher);
