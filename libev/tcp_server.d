@@ -11,6 +11,10 @@ ev_io* req_watchers[];
 ev_io* tWatcher;
 Socket tReq[];
 
+extern (C) void sigintCb (ev_loop_t* loop, ev_signal *w, int revents) {
+	ev_break(loop, EVBREAK_ALL);
+}
+
 // another callback, this time for a time-out
 extern (C) void socket_watcher_cb(ev_loop_t* loop, ev_io *w, int revents) {
 	writeln("Socket ready");
@@ -51,13 +55,20 @@ void startServer(ushort port) {
 	server_watcher.data = &serverSock;
 
 	// use the default event loop unless you have special needs
-	auto loop = ev_default_loop(0);
+	auto mainLoop = ev_default_loop(0);
 
 	ev_io_init(&server_watcher, &connection_cb, serverSock.handle, EV_READ);
-	ev_io_start(loop, &server_watcher);
+	ev_io_start(mainLoop, &server_watcher);
+
+	// set up our signal watchers
+	ev_signal signal_watcher;
+	ev_signal_init(&signal_watcher, &sigintCb, /*SIGINT*/2);
+	ev_signal_start(mainLoop, &signal_watcher);
 
 	// now wait for events to arrive
-	ev_run(loop, 0);
+	ev_run(mainLoop, 0);
+
+	ev_loop_destroy(mainLoop);
 }
 
 void main(char[][] args) {
