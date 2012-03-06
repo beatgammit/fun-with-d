@@ -3,14 +3,6 @@ import std.stdio;
 import std.conv;
 import std.socket;
 
-// this is hack-tastic
-// it keeps objects from being garbage collected
-// this is a bad idea, always, so don't do this in
-// production code (this just made things simpler)
-ev_io* req_watchers[];
-ev_io* tWatcher;
-Socket tReq[];
-
 extern (C) void sigintCb (ev_loop_t* loop, ev_signal *w, int revents) {
 	ev_break(loop, EVBREAK_ALL);
 }
@@ -19,30 +11,30 @@ extern (C) void sigintCb (ev_loop_t* loop, ev_signal *w, int revents) {
 extern (C) void socket_watcher_cb(ev_loop_t* loop, ev_io *w, int revents) {
 	writeln("Socket ready");
 
-	auto req = (*cast(Socket*)((*w).data));
+	auto req = new Socket(cast(socket_t)w.fd, AddressFamily.INET);
 
 	char[1024] buf;
 	auto received = req.receive(buf);
 
 	writefln("%d bytes read. Data:\n%s", received, buf[0..received]);
 
-	req.send("Hello world");
+	req.send("You said: " ~ buf[0..received] ~ "\nHello!!\n");
 	req.close();
 
 	ev_io_stop(loop, w);
 }
 
 extern (C) void connection_cb(ev_loop_t* loop, ev_io* w, int revents) {
-	tReq ~= (*cast(TcpSocket*)(*w).data).accept();
+	auto server = cast(TcpSocket*)(*w).data;
+	auto req = server.accept();
 
 	writeln("Client connected");
 
-	tWatcher = new ev_io;
-	tWatcher.data = &tReq[tReq.length - 1];
-	req_watchers ~= tWatcher;
+	// allocate on the heap; I'll release it later, I swear =D
+	ev_io* watcher = new ev_io;
 
-	ev_io_init(tWatcher, &socket_watcher_cb, tReq[tReq.length - 1].handle, EV_READ);
-	ev_io_start(loop, tWatcher);
+	ev_io_init(watcher, &socket_watcher_cb, req.handle, EV_READ);
+	ev_io_start(loop, watcher);
 }
 
 void startServer(ushort port) {
